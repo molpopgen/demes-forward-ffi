@@ -145,4 +145,14 @@ demes:
         );
         unsafe { forward_graph_deallocate(graph) };
     }
+
+    #[test]
+    fn test_empty_graph() {
+        let yaml = "";
+        let yaml_cstr = CString::new(yaml).unwrap();
+        let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
+        let graph = unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0) };
+        assert!(unsafe { forward_graph_is_error_state(graph) });
+        unsafe { forward_graph_deallocate(graph) };
+    }
 }
