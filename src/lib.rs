@@ -13,6 +13,13 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     yaml: *const c_char,
     burnin: f64,
 ) -> *mut OpaqueForwardGraph {
+    if yaml.is_null() {
+        let b = Box::new(OpaqueForwardGraph {
+            graph: None,
+            error: Some("yaml string is null pointer".to_string()),
+        });
+        return Box::into_raw(b);
+    }
     let yaml = CStr::from_ptr(yaml);
     let yaml = match yaml.to_owned().to_str() {
         Ok(s) => s.to_string(),
@@ -152,6 +159,14 @@ demes:
         let yaml_cstr = CString::new(yaml).unwrap();
         let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
         let graph = unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0) };
+        assert!(unsafe { forward_graph_is_error_state(graph) });
+        unsafe { forward_graph_deallocate(graph) };
+    }
+
+    #[test]
+    fn test_null_graph() {
+        let yaml: *const c_char = std::ptr::null();
+        let graph = unsafe { forward_graph_initialize_from_yaml(yaml, 100.0) };
         assert!(unsafe { forward_graph_is_error_state(graph) });
         unsafe { forward_graph_deallocate(graph) };
     }
