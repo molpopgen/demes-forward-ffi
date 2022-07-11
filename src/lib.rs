@@ -6,6 +6,15 @@ pub struct OpaqueForwardGraph {
     error: Option<String>,
 }
 
+macro_rules! make_graph_pointer_from_parts {
+    ($graph: expr, $error: expr) => {{
+        Box::into_raw(Box::new(OpaqueForwardGraph {
+            graph: $graph,
+            error: $error,
+        }))
+    }};
+}
+
 /// # Safety
 ///
 /// `yaml` must be a valid pointer containing valid utf8 data.
@@ -14,43 +23,32 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     burnin: f64,
 ) -> *mut OpaqueForwardGraph {
     if yaml.is_null() {
-        let b = Box::new(OpaqueForwardGraph {
-            graph: None,
-            error: Some("yaml string is null pointer".to_string()),
-        });
-        return Box::into_raw(b);
+        return make_graph_pointer_from_parts!(
+            None,
+            Some("could not convert c_char to String".to_string())
+        );
     }
     let yaml = CStr::from_ptr(yaml);
     let yaml = match yaml.to_owned().to_str() {
         Ok(s) => s.to_string(),
-        Err(_) => {
-            let b = Box::new(OpaqueForwardGraph {
-                graph: None,
-                error: Some("could not convert c_char to String".to_string()),
-            });
-            return Box::into_raw(b);
+        Err(e) => {
+            return make_graph_pointer_from_parts!(None, Some(format!("{}", e)));
         }
     };
     let dg = match demes::loads(&yaml) {
         Ok(graph) => graph,
         Err(e) => {
-            let b = Box::new(OpaqueForwardGraph {
-                graph: None,
-                error: Some(format!("{}", e)),
-            });
-            return Box::into_raw(b);
+            return make_graph_pointer_from_parts!(None, Some(format!("{}", e)));
         }
     };
-    let (graph, error) = match demes_forward::ForwardGraph::new(
+    match demes_forward::ForwardGraph::new(
         dg,
         burnin,
         Some(demes_forward::demes::RoundTimeToInteger::F64),
     ) {
-        Ok(graph) => (Some(graph), None),
-        Err(e) => (None, Some(format!("{}", e))),
-    };
-    let b = Box::new(OpaqueForwardGraph { graph, error });
-    Box::into_raw(b)
+        Ok(graph) => make_graph_pointer_from_parts!(Some(graph), None),
+        Err(e) => make_graph_pointer_from_parts!(None, Some(format!("{}", e))),
+    }
 }
 
 /// # Safety
