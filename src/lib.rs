@@ -6,11 +6,11 @@ pub struct OpaqueForwardGraph {
     error: Option<String>,
 }
 
-macro_rules! update_graph {
-    ($graph: expr, $error: expr, $ograph: expr) => {{
-        (*$ograph).graph = $graph;
-        (*$ograph).error = $error;
-    }};
+impl OpaqueForwardGraph {
+    fn update(&mut self, graph: Option<demes_forward::ForwardGraph>, error: Option<String>) {
+        self.graph = graph;
+        self.error = error.map(|e| e.chars().filter(|c| c.is_ascii()).collect::<String>());
+    }
 }
 
 /// Allocate an [`OpaqueForwardGraph`]
@@ -41,25 +41,22 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     graph: *mut OpaqueForwardGraph,
 ) {
     if yaml.is_null() {
-        update_graph!(
-            None,
-            Some("could not convert c_char to String".to_string()),
-            graph
-        );
+        (*graph).update(None, Some("could not convert c_char to String".to_string()));
         return;
     }
     let yaml = CStr::from_ptr(yaml);
     let yaml = match yaml.to_owned().to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
-            update_graph!(None, Some(format!("{}", e)), graph);
+            (*graph).update(None, Some(format!("{}", e)));
             return;
         }
     };
     let dg = match demes::loads(&yaml) {
         Ok(graph) => graph,
         Err(e) => {
-            update_graph!(None, Some(format!("{}", e)), graph);
+            (*graph).update(None, Some(format!("{}", e)));
+
             return;
         }
     };
@@ -68,8 +65,8 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
         burnin,
         Some(demes_forward::demes::RoundTimeToInteger::F64),
     ) {
-        Ok(fgraph) => update_graph!(Some(fgraph), None, graph),
-        Err(e) => update_graph!(None, Some(format!("{}", e)), graph),
+        Ok(fgraph) => (*graph).update(Some(fgraph), None),
+        Err(e) => (*graph).update(None, Some(format!("{}", e))),
     }
 }
 
