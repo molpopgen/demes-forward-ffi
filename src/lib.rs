@@ -13,6 +13,16 @@ macro_rules! update_graph {
     }};
 }
 
+/// Allocate an [`OpaqueForwardGraph`]
+///
+/// # Panics
+///
+/// This function will panic if the pointer allocation fails.
+///
+/// # Safety
+///
+/// The pointer is returned by leaking a [`Box`].
+/// The pointer is managed by rust and is freed by [`forward_graph_deallocate`].
 pub extern "C" fn forward_graph_allocate() -> *mut OpaqueForwardGraph {
     Box::into_raw(Box::new(OpaqueForwardGraph {
         graph: None,
