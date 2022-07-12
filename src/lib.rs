@@ -23,6 +23,7 @@ macro_rules! update_graph {
 ///
 /// The pointer is returned by leaking a [`Box`].
 /// The pointer is managed by rust and is freed by [`forward_graph_deallocate`].
+#[no_mangle]
 pub extern "C" fn forward_graph_allocate() -> *mut OpaqueForwardGraph {
     Box::into_raw(Box::new(OpaqueForwardGraph {
         graph: None,
@@ -33,6 +34,7 @@ pub extern "C" fn forward_graph_allocate() -> *mut OpaqueForwardGraph {
 /// # Safety
 ///
 /// `yaml` must be a valid pointer containing valid utf8 data.
+#[no_mangle]
 pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     yaml: *const c_char,
     burnin: f64,
