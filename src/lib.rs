@@ -6,13 +6,18 @@ pub struct OpaqueForwardGraph {
     error: Option<String>,
 }
 
-macro_rules! make_graph_pointer_from_parts {
-    ($graph: expr, $error: expr) => {{
-        Box::into_raw(Box::new(OpaqueForwardGraph {
-            graph: $graph,
-            error: $error,
-        }))
+macro_rules! update_graph {
+    ($graph: expr, $error: expr, $ograph: expr) => {{
+        (*$ograph).graph = $graph;
+        (*$ograph).error = $error;
     }};
+}
+
+pub extern "C" fn forward_graph_allocate() -> *mut OpaqueForwardGraph {
+    Box::into_raw(Box::new(OpaqueForwardGraph {
+        graph: None,
+        error: None,
+    }))
 }
 
 /// # Safety
@@ -21,24 +26,29 @@ macro_rules! make_graph_pointer_from_parts {
 pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     yaml: *const c_char,
     burnin: f64,
-) -> *mut OpaqueForwardGraph {
+    graph: *mut OpaqueForwardGraph,
+) {
     if yaml.is_null() {
-        return make_graph_pointer_from_parts!(
+        update_graph!(
             None,
-            Some("could not convert c_char to String".to_string())
+            Some("could not convert c_char to String".to_string()),
+            graph
         );
+        return;
     }
     let yaml = CStr::from_ptr(yaml);
     let yaml = match yaml.to_owned().to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
-            return make_graph_pointer_from_parts!(None, Some(format!("{}", e)));
+            update_graph!(None, Some(format!("{}", e)), graph);
+            return;
         }
     };
     let dg = match demes::loads(&yaml) {
         Ok(graph) => graph,
         Err(e) => {
-            return make_graph_pointer_from_parts!(None, Some(format!("{}", e)));
+            update_graph!(None, Some(format!("{}", e)), graph);
+            return;
         }
     };
     match demes_forward::ForwardGraph::new(
@@ -46,8 +56,8 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
         burnin,
         Some(demes_forward::demes::RoundTimeToInteger::F64),
     ) {
-        Ok(graph) => make_graph_pointer_from_parts!(Some(graph), None),
-        Err(e) => make_graph_pointer_from_parts!(None, Some(format!("{}", e))),
+        Ok(fgraph) => update_graph!(Some(fgraph), None, graph),
+        Err(e) => update_graph!(None, Some(format!("{}", e)), graph),
     }
 }
 
@@ -119,7 +129,8 @@ demes:
 ";
         let yaml_cstr = CString::new(yaml).unwrap();
         let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-        let graph = unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0) };
+        let graph = forward_graph_allocate();
+        unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph) };
         assert!(unsafe { forward_graph_selfing_rates(graph) }.is_null());
         unsafe { forward_graph_deallocate(graph) };
     }
@@ -138,7 +149,8 @@ demes:
 ";
         let yaml_cstr = CString::new(yaml).unwrap();
         let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-        let graph = unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0) };
+        let graph = forward_graph_allocate();
+        unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph) };
         assert!(unsafe { forward_graph_is_error_state(graph) });
         let message = unsafe { forward_graph_get_error_message(graph) };
         assert!(!message.is_null());
@@ -156,7 +168,8 @@ demes:
         let yaml = "";
         let yaml_cstr = CString::new(yaml).unwrap();
         let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-        let graph = unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0) };
+        let graph = forward_graph_allocate();
+        unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph) };
         assert!(unsafe { forward_graph_is_error_state(graph) });
         unsafe { forward_graph_deallocate(graph) };
     }
@@ -164,7 +177,8 @@ demes:
     #[test]
     fn test_null_graph() {
         let yaml: *const c_char = std::ptr::null();
-        let graph = unsafe { forward_graph_initialize_from_yaml(yaml, 100.0) };
+        let graph = forward_graph_allocate();
+        unsafe { forward_graph_initialize_from_yaml(yaml, 100.0, graph) };
         assert!(unsafe { forward_graph_is_error_state(graph) });
         unsafe { forward_graph_deallocate(graph) };
     }
