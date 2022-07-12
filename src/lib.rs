@@ -9,7 +9,11 @@ pub struct OpaqueForwardGraph {
 impl OpaqueForwardGraph {
     fn update(&mut self, graph: Option<demes_forward::ForwardGraph>, error: Option<String>) {
         self.graph = graph;
-        self.error = error.map(|e| e.chars().filter(|c| c.is_ascii()).collect::<String>());
+        self.error = error.map(|e| {
+            e.chars()
+                .filter(|c| c.is_ascii() && c != &'"')
+                .collect::<String>()
+        });
     }
 }
 
@@ -167,7 +171,7 @@ demes:
         let rust_message: &str = rust_message.to_str().unwrap();
         assert_eq!(
             rust_message,
-            "\"deme A has finite start time but no ancestors\""
+            "deme A has finite start time but no ancestors"
         );
         unsafe { forward_graph_deallocate(graph) };
     }
