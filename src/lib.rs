@@ -108,6 +108,10 @@ pub unsafe extern "C" fn forward_graph_get_error_message(
     }
 }
 
+/// Pointer to first element of selfing rates array.
+///
+/// The length of the array is equal to [`forward_graph_number_of_demes`].
+///
 /// # Safety
 ///
 /// `graph` must be a valid pointer
@@ -121,6 +125,96 @@ pub unsafe extern "C" fn forward_graph_selfing_rates(
             None => std::ptr::null(),
         },
         None => std::ptr::null(),
+    }
+}
+
+/// Pointer to first element of cloning rates array.
+///
+/// The length of the array is equal to [`forward_graph_number_of_demes`].
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_cloning_rates(
+    graph: *const OpaqueForwardGraph,
+) -> *const f64 {
+    match &(*graph).graph {
+        Some(graph) => match graph.cloning_rates() {
+            Some(slice) => slice.as_ptr() as *const f64,
+            None => std::ptr::null(),
+        },
+        None => std::ptr::null(),
+    }
+}
+
+/// Pointer to first element of parental deme size array.
+///
+/// The length of the array is equal to [`forward_graph_number_of_demes`].
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_parental_deme_sizes(
+    graph: *const OpaqueForwardGraph,
+) -> *const f64 {
+    match &(*graph).graph {
+        Some(graph) => match graph.parental_deme_sizes() {
+            Some(slice) => slice.as_ptr() as *const f64,
+            None => std::ptr::null(),
+        },
+        None => std::ptr::null(),
+    }
+}
+
+/// Pointer to first element of offspring deme size array.
+///
+/// The length of the array is equal to [`forward_graph_number_of_demes`].
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_offspring_deme_sizes(
+    graph: *const OpaqueForwardGraph,
+) -> *const f64 {
+    match &(*graph).graph {
+        Some(graph) => match graph.offspring_deme_sizes() {
+            Some(slice) => slice.as_ptr() as *const f64,
+            None => std::ptr::null(),
+        },
+        None => std::ptr::null(),
+    }
+}
+
+/// Check if there are any extant offspring demes.
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_any_extant_offspring_demes(
+    graph: *const OpaqueForwardGraph,
+) -> bool {
+    match &(*graph).graph {
+        Some(graph) => graph.any_extant_offspring_demes(),
+        None => false,
+    }
+}
+
+/// Check if there are any extant parental demes.
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_any_extant_parent_demes(
+    graph: *const OpaqueForwardGraph,
+) -> bool {
+    match &(*graph).graph {
+        Some(graph) => graph.any_extant_parental_demes(),
+        None => false,
     }
 }
 
@@ -254,5 +348,26 @@ demes:
             let num_demes = unsafe { forward_graph_number_of_demes(graph.as_ptr()) };
             assert_eq!(num_demes, 1);
         }
+    }
+
+    #[test]
+    fn getters_are_none_when_state_not_updated() {
+        let yaml = "
+time_units: generations
+demes:
+ - name: A
+   epochs:
+   - start_size: 100
+     end_time: 50
+   - start_size: 200
+";
+        let mut graph = GraphHolder::new();
+        graph.init_with_yaml(100.0, yaml);
+        assert!(unsafe { forward_graph_selfing_rates(graph.as_mut_ptr()) }.is_null());
+        assert!(unsafe { forward_graph_cloning_rates(graph.as_mut_ptr()) }.is_null());
+        assert!(unsafe { forward_graph_parental_deme_sizes(graph.as_mut_ptr()) }.is_null());
+        assert!(unsafe { forward_graph_offspring_deme_sizes(graph.as_mut_ptr()) }.is_null());
+        assert!(!unsafe { forward_graph_any_extant_offspring_demes(graph.as_mut_ptr()) });
+        assert!(!unsafe { forward_graph_any_extant_parent_demes(graph.as_mut_ptr()) });
     }
 }
