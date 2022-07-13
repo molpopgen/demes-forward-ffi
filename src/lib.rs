@@ -124,10 +124,54 @@ pub unsafe extern "C" fn forward_graph_selfing_rates(
     }
 }
 
+/// Get the total number of demes in the model
+///
+/// # Returns
+///
+/// [`isize`] > 0 if the graph is not in an error state.
+/// Returns `-1` otherwise.
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_number_of_demes(graph: *const OpaqueForwardGraph) -> isize {
+    match &(*graph).graph {
+        Some(graph) => graph.num_demes_in_model() as isize,
+        None => -1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::ffi::CString;
+
+    struct GraphHolder {
+        graph: *mut OpaqueForwardGraph,
+    }
+
+    impl GraphHolder {
+        fn new() -> Self {
+            Self {
+                graph: forward_graph_allocate(),
+            }
+        }
+
+        fn as_mut_ptr(&mut self) -> *mut OpaqueForwardGraph {
+            self.graph
+        }
+
+        fn as_ptr(&mut self) -> *const OpaqueForwardGraph {
+            self.graph
+        }
+    }
+
+    impl Drop for GraphHolder {
+        fn drop(&mut self) {
+            unsafe { forward_graph_deallocate(self.as_mut_ptr()) };
+        }
+    }
 
     #[test]
     fn test_alloc_dealloc() {
@@ -194,5 +238,26 @@ demes:
         unsafe { forward_graph_initialize_from_yaml(yaml, 100.0, graph) };
         assert!(unsafe { forward_graph_is_error_state(graph) });
         unsafe { forward_graph_deallocate(graph) };
+    }
+
+    #[test]
+    fn number_of_demes_in_model() {
+        {
+            let yaml = "
+time_units: generations
+demes:
+ - name: A
+   epochs:
+   - start_size: 100
+     end_time: 50
+   - start_size: 200
+";
+            let yaml_cstr = CString::new(yaml).unwrap();
+            let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
+            let mut graph = GraphHolder::new();
+            unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph.as_mut_ptr()) };
+            let num_demes = unsafe { forward_graph_number_of_demes(graph.as_ptr()) };
+            assert_eq!(num_demes, 1);
+        }
     }
 }
