@@ -268,6 +268,28 @@ pub unsafe extern "C" fn forward_graph_number_of_demes(graph: *const OpaqueForwa
     }
 }
 
+/// Update the model state to a given time.
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_update_state(
+    time: f64,
+    graph: *mut OpaqueForwardGraph,
+) -> i32 {
+    match &mut (*graph).graph {
+        Some(fgraph) => match fgraph.update_state(time) {
+            Ok(()) => 0,
+            Err(e) => {
+                (*graph).update(None, Some(format!("{}", e)));
+                -1
+            }
+        },
+        None => -1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,14 +426,10 @@ demes:
 
         // FIXME: this will all get a real API soon
         {
-            unsafe {
-                (*graph.graph)
-                    .graph
-                    .as_mut()
-                    .unwrap()
-                    .update_state(0.0)
-                    .unwrap();
-            }
+            assert_eq!(
+                unsafe { forward_graph_update_state(0.0, graph.as_mut_ptr()) },
+                0,
+            );
             let mut status = -1;
             let pstatus: *mut i32 = &mut status;
             let pdeme_sizes =
