@@ -43,17 +43,17 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     yaml: *const c_char,
     burnin: f64,
     graph: *mut OpaqueForwardGraph,
-) {
+) -> i32 {
     if yaml.is_null() {
         (*graph).update(None, Some("could not convert c_char to String".to_string()));
-        return;
+        return -1;
     }
     let yaml = CStr::from_ptr(yaml);
     let yaml = match yaml.to_owned().to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
             (*graph).update(None, Some(format!("{}", e)));
-            return;
+            return -1;
         }
     };
     let dg = match demes::loads(&yaml) {
@@ -61,7 +61,7 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
         Err(e) => {
             (*graph).update(None, Some(format!("{}", e)));
 
-            return;
+            return -1;
         }
     };
     match demes_forward::ForwardGraph::new(
@@ -71,7 +71,8 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
     ) {
         Ok(fgraph) => (*graph).update(Some(fgraph), None),
         Err(e) => (*graph).update(None, Some(format!("{}", e))),
-    }
+    };
+    0
 }
 
 /// # Safety
@@ -96,7 +97,9 @@ pub unsafe extern "C" fn forward_graph_deallocate(graph: *mut OpaqueForwardGraph
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_get_error_message(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> *const c_char {
+    *status = 0;
     match &(*graph).error {
         Some(message) => {
             let mref: &str = message;
@@ -118,13 +121,18 @@ pub unsafe extern "C" fn forward_graph_get_error_message(
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_selfing_rates(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> *const f64 {
+    *status = 0;
     match &(*graph).graph {
         Some(graph) => match graph.selfing_rates() {
             Some(slice) => slice.as_ptr() as *const f64,
             None => std::ptr::null(),
         },
-        None => std::ptr::null(),
+        None => {
+            *status = -1;
+            std::ptr::null()
+        }
     }
 }
 
@@ -138,17 +146,22 @@ pub unsafe extern "C" fn forward_graph_selfing_rates(
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_cloning_rates(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> *const f64 {
+    *status = 0;
     match &(*graph).graph {
         Some(graph) => match graph.cloning_rates() {
             Some(slice) => slice.as_ptr() as *const f64,
             None => std::ptr::null(),
         },
-        None => std::ptr::null(),
+        None => {
+            *status = -1;
+            std::ptr::null()
+        }
     }
 }
 
-/// Pointer to first element of parental deme size array.
+/// Return a pointer to the first element of parental deme size array.
 ///
 /// The length of the array is equal to [`forward_graph_number_of_demes`].
 ///
@@ -158,17 +171,22 @@ pub unsafe extern "C" fn forward_graph_cloning_rates(
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_parental_deme_sizes(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> *const f64 {
+    *status = 0;
     match &(*graph).graph {
         Some(graph) => match graph.parental_deme_sizes() {
             Some(slice) => slice.as_ptr() as *const f64,
             None => std::ptr::null(),
         },
-        None => std::ptr::null(),
+        None => {
+            *status = -1;
+            std::ptr::null()
+        }
     }
 }
 
-/// Pointer to first element of offspring deme size array.
+/// Return a pointer to the first element of offspring deme size array.
 ///
 /// The length of the array is equal to [`forward_graph_number_of_demes`].
 ///
@@ -178,13 +196,18 @@ pub unsafe extern "C" fn forward_graph_parental_deme_sizes(
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_offspring_deme_sizes(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> *const f64 {
+    *status = 0;
     match &(*graph).graph {
         Some(graph) => match graph.offspring_deme_sizes() {
             Some(slice) => slice.as_ptr() as *const f64,
             None => std::ptr::null(),
         },
-        None => std::ptr::null(),
+        None => {
+            *status = -1;
+            std::ptr::null()
+        }
     }
 }
 
@@ -196,10 +219,15 @@ pub unsafe extern "C" fn forward_graph_offspring_deme_sizes(
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_any_extant_offspring_demes(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> bool {
+    *status = 0;
     match &(*graph).graph {
         Some(graph) => graph.any_extant_offspring_demes(),
-        None => false,
+        None => {
+            *status = -1;
+            false
+        }
     }
 }
 
@@ -211,10 +239,15 @@ pub unsafe extern "C" fn forward_graph_any_extant_offspring_demes(
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_any_extant_parent_demes(
     graph: *const OpaqueForwardGraph,
+    status: *mut i32,
 ) -> bool {
+    *status = 0;
     match &(*graph).graph {
         Some(graph) => graph.any_extant_parental_demes(),
-        None => false,
+        None => {
+            *status = -1;
+            false
+        }
     }
 }
 
@@ -260,10 +293,10 @@ mod tests {
             self.graph
         }
 
-        fn init_with_yaml(&mut self, burnin: f64, yaml: &str) {
+        fn init_with_yaml(&mut self, burnin: f64, yaml: &str) -> i32 {
             let yaml_cstr = CString::new(yaml).unwrap();
             let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-            unsafe { forward_graph_initialize_from_yaml(yaml_c_char, burnin, self.as_mut_ptr()) };
+            unsafe { forward_graph_initialize_from_yaml(yaml_c_char, burnin, self.as_mut_ptr()) }
         }
     }
 
@@ -271,22 +304,6 @@ mod tests {
         fn drop(&mut self) {
             unsafe { forward_graph_deallocate(self.as_mut_ptr()) };
         }
-    }
-
-    #[test]
-    fn test_alloc_dealloc() {
-        let yaml = "
-time_units: generations
-demes:
- - name: A
-   epochs:
-   - start_size: 100
-     end_time: 50
-   - start_size: 200
-";
-        let mut graph = GraphHolder::new();
-        graph.init_with_yaml(100.0, yaml);
-        assert!(unsafe { forward_graph_selfing_rates(graph.as_mut_ptr()) }.is_null());
     }
 
     #[test]
@@ -304,7 +321,10 @@ demes:
         let mut graph = GraphHolder::new();
         graph.init_with_yaml(100.0, yaml);
         assert!(unsafe { forward_graph_is_error_state(graph.as_ptr()) });
-        let message = unsafe { forward_graph_get_error_message(graph.as_ptr()) };
+        let mut status = -1;
+        let pstatus: *mut i32 = &mut status;
+        let message = unsafe { forward_graph_get_error_message(graph.as_ptr(), pstatus) };
+        assert_eq!(status, 0);
         assert!(!message.is_null());
         let rust_message = unsafe { CStr::from_ptr(message) };
         let rust_message: &str = rust_message.to_str().unwrap();
@@ -363,11 +383,45 @@ demes:
 ";
         let mut graph = GraphHolder::new();
         graph.init_with_yaml(100.0, yaml);
-        assert!(unsafe { forward_graph_selfing_rates(graph.as_ptr()) }.is_null());
-        assert!(unsafe { forward_graph_cloning_rates(graph.as_ptr()) }.is_null());
-        assert!(unsafe { forward_graph_parental_deme_sizes(graph.as_ptr()) }.is_null());
-        assert!(unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr()) }.is_null());
-        assert!(!unsafe { forward_graph_any_extant_offspring_demes(graph.as_ptr()) });
-        assert!(!unsafe { forward_graph_any_extant_parent_demes(graph.as_ptr()) });
+        let mut status = -1;
+        let pstatus: *mut i32 = &mut status;
+        assert!(unsafe { forward_graph_selfing_rates(graph.as_ptr(), pstatus) }.is_null());
+        assert_eq!(status, 0);
+        status = -1;
+        assert!(unsafe { forward_graph_cloning_rates(graph.as_ptr(), pstatus) }.is_null());
+        assert_eq!(status, 0);
+        status = -1;
+        assert!(unsafe { forward_graph_parental_deme_sizes(graph.as_ptr(), pstatus) }.is_null(),);
+        assert_eq!(status, 0);
+        status = -1;
+        assert!(unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) }.is_null(),);
+        assert_eq!(status, 0);
+        status = -1;
+        assert!(!unsafe { forward_graph_any_extant_offspring_demes(graph.as_ptr(), pstatus) });
+        assert_eq!(status, 0);
+        status = -1;
+        assert!(!unsafe { forward_graph_any_extant_parent_demes(graph.as_ptr(), pstatus) });
+        assert_eq!(status, 0);
+
+        // FIXME: this will all get a real API soon
+        {
+            unsafe {
+                (*graph.graph)
+                    .graph
+                    .as_mut()
+                    .unwrap()
+                    .update_state(0.0)
+                    .unwrap();
+            }
+            let mut status = -1;
+            let pstatus: *mut i32 = &mut status;
+            let pdeme_sizes =
+                unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
+            assert!(!pdeme_sizes.is_null());
+            assert_eq!(status, 0);
+
+            let deme_sizes = unsafe { std::slice::from_raw_parts(pdeme_sizes, 1) };
+            assert_eq!(deme_sizes[0], 100.0);
+        }
     }
 }
