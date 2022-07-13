@@ -165,6 +165,12 @@ mod tests {
         fn as_ptr(&mut self) -> *const OpaqueForwardGraph {
             self.graph
         }
+
+        fn init_with_yaml(&mut self, burnin: f64, yaml: &str) {
+            let yaml_cstr = CString::new(yaml).unwrap();
+            let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
+            unsafe { forward_graph_initialize_from_yaml(yaml_c_char, burnin, self.as_mut_ptr()) };
+        }
     }
 
     impl Drop for GraphHolder {
@@ -184,12 +190,9 @@ demes:
      end_time: 50
    - start_size: 200
 ";
-        let yaml_cstr = CString::new(yaml).unwrap();
-        let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-        let graph = forward_graph_allocate();
-        unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph) };
-        assert!(unsafe { forward_graph_selfing_rates(graph) }.is_null());
-        unsafe { forward_graph_deallocate(graph) };
+        let mut graph = GraphHolder::new();
+        graph.init_with_yaml(100.0, yaml);
+        assert!(unsafe { forward_graph_selfing_rates(graph.as_mut_ptr()) }.is_null());
     }
 
     #[test]
@@ -204,12 +207,10 @@ demes:
      end_time: 50
    - start_size: 200
 ";
-        let yaml_cstr = CString::new(yaml).unwrap();
-        let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-        let graph = forward_graph_allocate();
-        unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph) };
-        assert!(unsafe { forward_graph_is_error_state(graph) });
-        let message = unsafe { forward_graph_get_error_message(graph) };
+        let mut graph = GraphHolder::new();
+        graph.init_with_yaml(100.0, yaml);
+        assert!(unsafe { forward_graph_is_error_state(graph.as_ptr()) });
+        let message = unsafe { forward_graph_get_error_message(graph.as_ptr()) };
         assert!(!message.is_null());
         let rust_message = unsafe { CStr::from_ptr(message) };
         let rust_message: &str = rust_message.to_str().unwrap();
@@ -217,18 +218,14 @@ demes:
             rust_message,
             "deme A has finite start time but no ancestors"
         );
-        unsafe { forward_graph_deallocate(graph) };
     }
 
     #[test]
     fn test_empty_graph() {
         let yaml = "";
-        let yaml_cstr = CString::new(yaml).unwrap();
-        let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
-        let graph = forward_graph_allocate();
-        unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph) };
-        assert!(unsafe { forward_graph_is_error_state(graph) });
-        unsafe { forward_graph_deallocate(graph) };
+        let mut graph = GraphHolder::new();
+        graph.init_with_yaml(100.0, yaml);
+        assert!(unsafe { forward_graph_is_error_state(graph.as_ptr()) });
     }
 
     #[test]
@@ -252,10 +249,8 @@ demes:
      end_time: 50
    - start_size: 200
 ";
-            let yaml_cstr = CString::new(yaml).unwrap();
-            let yaml_c_char: *const c_char = yaml_cstr.as_ptr() as *const c_char;
             let mut graph = GraphHolder::new();
-            unsafe { forward_graph_initialize_from_yaml(yaml_c_char, 100.0, graph.as_mut_ptr()) };
+            graph.init_with_yaml(100.0, yaml);
             let num_demes = unsafe { forward_graph_number_of_demes(graph.as_ptr()) };
             assert_eq!(num_demes, 1);
         }
