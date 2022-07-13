@@ -1,18 +1,22 @@
 use libc::c_char;
 use std::ffi::CStr;
+use std::ffi::CString;
 
 pub struct OpaqueForwardGraph {
     graph: Option<demes_forward::ForwardGraph>,
-    error: Option<String>,
+    error: Option<CString>,
 }
 
 impl OpaqueForwardGraph {
     fn update(&mut self, graph: Option<demes_forward::ForwardGraph>, error: Option<String>) {
         self.graph = graph;
         self.error = error.map(|e| {
-            e.chars()
-                .filter(|c| c.is_ascii() && c != &'"')
-                .collect::<String>()
+            CString::new(
+                e.chars()
+                    .filter(|c| c.is_ascii() && c != &'"')
+                    .collect::<String>(),
+            )
+            .unwrap()
         });
     }
 }
@@ -101,12 +105,7 @@ pub unsafe extern "C" fn forward_graph_get_error_message(
 ) -> *const c_char {
     *status = 0;
     match &(*graph).error {
-        Some(message) => {
-            let mref: &str = message;
-            let message_cstr = CStr::from_ptr(mref.as_ptr() as *const i8);
-            let message_c_char: *const c_char = message_cstr.as_ptr() as *const c_char;
-            message_c_char
-        }
+        Some(message) => message.as_ptr(),
         None => std::ptr::null(),
     }
 }
