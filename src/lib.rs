@@ -363,11 +363,11 @@ demes:
 ";
         let mut graph = GraphHolder::new();
         graph.init_with_yaml(100.0, yaml);
-        assert!(unsafe { forward_graph_selfing_rates(graph.as_mut_ptr()) }.is_null());
-        assert!(unsafe { forward_graph_cloning_rates(graph.as_mut_ptr()) }.is_null());
-        assert!(unsafe { forward_graph_parental_deme_sizes(graph.as_mut_ptr()) }.is_null());
-        assert!(unsafe { forward_graph_offspring_deme_sizes(graph.as_mut_ptr()) }.is_null());
-        assert!(!unsafe { forward_graph_any_extant_offspring_demes(graph.as_mut_ptr()) });
-        assert!(!unsafe { forward_graph_any_extant_parent_demes(graph.as_mut_ptr()) });
+        assert!(unsafe { forward_graph_selfing_rates(graph.as_ptr()) }.is_null());
+        assert!(unsafe { forward_graph_cloning_rates(graph.as_ptr()) }.is_null());
+        assert!(unsafe { forward_graph_parental_deme_sizes(graph.as_ptr()) }.is_null());
+        assert!(unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr()) }.is_null());
+        assert!(!unsafe { forward_graph_any_extant_offspring_demes(graph.as_ptr()) });
+        assert!(!unsafe { forward_graph_any_extant_parent_demes(graph.as_ptr()) });
     }
 }
