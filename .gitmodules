@@ -1,0 +1,3 @@
+[submodule "c_example/corrosion"]
+	path = c_example/corrosion
+	url = https://github.com/corrosion-rs/corrosion.git
