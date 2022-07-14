@@ -5,11 +5,16 @@ use std::ffi::CString;
 pub struct OpaqueForwardGraph {
     graph: Option<demes_forward::ForwardGraph>,
     error: Option<CString>,
+    current_time: Option<f64>,
 }
 
 impl OpaqueForwardGraph {
     fn update(&mut self, graph: Option<demes_forward::ForwardGraph>, error: Option<String>) {
         self.graph = graph;
+        self.update_error(error);
+    }
+
+    fn update_error(&mut self, error: Option<String>) {
         self.error = error.map(|e| {
             CString::new(
                 e.chars()
@@ -36,6 +41,7 @@ pub extern "C" fn forward_graph_allocate() -> *mut OpaqueForwardGraph {
     Box::into_raw(Box::new(OpaqueForwardGraph {
         graph: None,
         error: None,
+        current_time: None,
     }))
 }
 
@@ -290,6 +296,72 @@ pub unsafe extern "C" fn forward_graph_update_state(
     }
 }
 
+/// Initialize graph to begin iterating over model.
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_initialize_time_iteration(
+    graph: *mut OpaqueForwardGraph,
+) -> i32 {
+    match &mut (*graph).graph {
+        Some(fgraph) => {
+            match fgraph.last_time_updated() {
+                Some(value) => {
+                    (*graph).current_time = Some(value.value() - 1.0);
+                }
+                None => {
+                    (*graph).current_time = Some(-1.0);
+                }
+            }
+            0
+        }
+        None => -1,
+    }
+}
+
+/// Iterate to the next time point in the model.
+///
+/// # Return values:
+///
+/// * null = done iterating
+/// * not null = still iterating
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_iterate_time(
+    graph: *mut OpaqueForwardGraph,
+    status: *mut i32,
+) -> *const f64 {
+    *status = 0;
+    if (*graph).current_time.is_none() {
+        *status = -1;
+        (*graph).update_error(Some(
+            "forward_graph_initialize_time_iteration has not been called".to_string(),
+        ));
+        return std::ptr::null();
+    }
+    let tref: &mut f64 = (*graph).current_time.as_mut().unwrap();
+    match &mut (*graph).graph {
+        Some(fgraph) => {
+            if *tref < fgraph.end_time().value() - 1.0 {
+                *tref += 1.0;
+                &*tref
+            } else {
+                (*graph).current_time = None;
+                std::ptr::null()
+            }
+        }
+        None => {
+            *status = -1;
+            std::ptr::null()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,7 +464,7 @@ demes:
     }
 
     #[test]
-    fn getters_are_none_when_state_not_updated() {
+    fn iterate_simple_model() {
         let yaml = "
 time_units: generations
 demes:
@@ -424,21 +496,103 @@ demes:
         assert!(!unsafe { forward_graph_any_extant_parent_demes(graph.as_ptr(), pstatus) });
         assert_eq!(status, 0);
 
-        // FIXME: this will all get a real API soon
         {
             assert_eq!(
-                unsafe { forward_graph_update_state(0.0, graph.as_mut_ptr()) },
+                unsafe { forward_graph_initialize_time_iteration(graph.as_mut_ptr()) },
                 0,
             );
+            let mut ngens = -1_i32;
+            let mut ptime: *const f64;
+            let mut times = vec![];
+            let mut sizes = vec![100.0; 100];
+            sizes.append(&mut vec![200.0; 50]);
+
             let mut status = -1;
             let pstatus: *mut i32 = &mut status;
-            let pdeme_sizes =
-                unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
-            assert!(!pdeme_sizes.is_null());
-            assert_eq!(status, 0);
+            ptime = unsafe { forward_graph_iterate_time(graph.as_mut_ptr(), pstatus) };
+            while !ptime.is_null() {
+                assert_eq!(status, 0);
+                ngens += 1;
+                unsafe { times.push(*ptime) };
+                assert_eq!(
+                    unsafe { forward_graph_update_state(*ptime, graph.as_mut_ptr()) },
+                    0,
+                );
+                let mut status = -1;
+                let pstatus: *mut i32 = &mut status;
+                if unsafe { forward_graph_any_extant_offspring_demes(graph.as_ptr(), pstatus) } {
+                    assert_eq!(status, 0);
+                    let offspring_deme_sizes =
+                        unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
+                    assert_eq!(status, 0);
+                    assert!(!offspring_deme_sizes.is_null());
+                    let deme_sizes = unsafe { std::slice::from_raw_parts(offspring_deme_sizes, 1) };
+                    assert_eq!(deme_sizes[0], sizes[ngens as usize]);
+                } else {
+                    status = -1;
+                    let offspring_deme_sizes =
+                        unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
+                    assert_eq!(status, 0);
+                    assert!(offspring_deme_sizes.is_null());
+                }
+                ptime = unsafe { forward_graph_iterate_time(graph.as_mut_ptr(), pstatus) };
+            }
+            assert!(ptime.is_null());
+            assert_eq!(times.first().unwrap(), &0.0);
+            assert_eq!(times.last().unwrap(), &150.0);
+            assert_eq!(ngens, 150);
+        }
 
-            let deme_sizes = unsafe { std::slice::from_raw_parts(pdeme_sizes, 1) };
-            assert_eq!(deme_sizes[0], 100.0);
+        // Now, start from time of 50
+        {
+            assert_eq!(
+                unsafe { forward_graph_update_state(50.0, graph.as_mut_ptr()) },
+                0,
+            );
+            assert_eq!(
+                unsafe { forward_graph_initialize_time_iteration(graph.as_mut_ptr()) },
+                0,
+            );
+            let mut ngens = -1_i32;
+            let mut ptime: *const f64;
+            let mut times = vec![];
+            let mut sizes = vec![100.0; 50];
+            sizes.append(&mut vec![200.0; 50]);
+
+            let mut status = -1;
+            let pstatus: *mut i32 = &mut status;
+            ptime = unsafe { forward_graph_iterate_time(graph.as_mut_ptr(), pstatus) };
+            while !ptime.is_null() {
+                assert_eq!(status, 0);
+                ngens += 1;
+                unsafe { times.push(*ptime) };
+                assert_eq!(
+                    unsafe { forward_graph_update_state(*ptime, graph.as_mut_ptr()) },
+                    0,
+                );
+                let mut status = -1;
+                let pstatus: *mut i32 = &mut status;
+                if unsafe { forward_graph_any_extant_offspring_demes(graph.as_ptr(), pstatus) } {
+                    assert_eq!(status, 0);
+                    let offspring_deme_sizes =
+                        unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
+                    assert_eq!(status, 0);
+                    assert!(!offspring_deme_sizes.is_null());
+                    let deme_sizes = unsafe { std::slice::from_raw_parts(offspring_deme_sizes, 1) };
+                    assert_eq!(deme_sizes[0], sizes[ngens as usize]);
+                } else {
+                    status = -1;
+                    let offspring_deme_sizes =
+                        unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
+                    assert_eq!(status, 0);
+                    assert!(offspring_deme_sizes.is_null());
+                }
+                ptime = unsafe { forward_graph_iterate_time(graph.as_mut_ptr(), pstatus) };
+            }
+            assert!(ptime.is_null());
+            assert_eq!(times.first().unwrap(), &50.0);
+            assert_eq!(times.last().unwrap(), &150.0);
+            assert_eq!(ngens, 100);
         }
     }
 }
