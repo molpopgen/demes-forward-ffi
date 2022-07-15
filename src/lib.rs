@@ -362,6 +362,40 @@ pub unsafe extern "C" fn forward_graph_iterate_time(
     }
 }
 
+/// # Safety
+///
+/// `graph` must be a valid pointer to an [`OpaqueForwardGraph`].
+/// `status` must be a valid pointer to an `i32`.
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_ancestry_proportions(
+    status: *mut i32,
+    offspring_deme: usize,
+    graph: *mut OpaqueForwardGraph,
+) -> *const f64 {
+    *status = 0;
+    match &(*graph).graph {
+        Some(fgraph) => {
+            if offspring_deme >= fgraph.num_demes_in_model() {
+                *status = -1;
+                (*graph).update_error(Some(format!(
+                    "offspring deme index {} out of range",
+                    offspring_deme
+                )));
+                std::ptr::null()
+            } else {
+                match fgraph.ancestry_proportions(offspring_deme) {
+                    Some(proportions) => proportions.as_ptr() as *const f64,
+                    None => std::ptr::null(),
+                }
+            }
+        }
+        None => {
+            *status = -1;
+            std::ptr::null()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +537,7 @@ demes:
             );
             let mut ngens = -1_i32;
             let mut ptime: *const f64;
+            let mut ancestry_proportions: *const f64;
             let mut times = vec![];
             let mut sizes = vec![100.0; 100];
             sizes.append(&mut vec![200.0; 50]);
@@ -526,6 +561,12 @@ demes:
                         unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
                     assert_eq!(status, 0);
                     assert!(!offspring_deme_sizes.is_null());
+                    ancestry_proportions =
+                        unsafe { forward_graph_ancestry_proportions(pstatus, 0, graph.as_mut_ptr()) };
+                    assert_eq!(status, 0);
+                    let ancestry_proportions =
+                        unsafe { std::slice::from_raw_parts(ancestry_proportions, 1) };
+                    assert!((ancestry_proportions[0] - 1.0) <= 1e-9);
                     let deme_sizes = unsafe { std::slice::from_raw_parts(offspring_deme_sizes, 1) };
                     assert_eq!(deme_sizes[0], sizes[ngens as usize]);
                 } else {
