@@ -396,6 +396,37 @@ pub unsafe extern "C" fn forward_graph_ancestry_proportions(
     }
 }
 
+/// Get the model end time.
+///
+/// The value returned is one generation after the
+/// last parental generation.
+/// Thus, this value defines a half-open interval
+/// during which parental demes exist.
+///
+/// # Safety
+///
+/// `graph` must be a valid pointer to an [`OpaqueForwardGraph`].
+/// `status` must be a valid pointer to an `i32`.
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_model_end_time(
+    status: *mut i32,
+    graph: *const OpaqueForwardGraph,
+) -> f64 {
+    *status = 0;
+    if (*graph).error.is_some() || (*graph).graph.is_none() {
+        *status = -1;
+        f64::NAN
+    } else {
+        match &(*graph).graph {
+            Some(fgraph) => fgraph.end_time().value(),
+            None => {
+                *status = -1;
+                f64::NAN
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,6 +576,11 @@ demes:
             let mut status = -1;
             let pstatus: *mut i32 = &mut status;
             ptime = unsafe { forward_graph_iterate_time(graph.as_mut_ptr(), pstatus) };
+            assert_eq!(
+                unsafe { forward_graph_model_end_time(pstatus, graph.as_ptr()) },
+                151.0
+            );
+            assert_eq!(status, 0);
             while !ptime.is_null() {
                 assert_eq!(status, 0);
                 ngens += 1;
