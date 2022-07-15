@@ -368,8 +368,8 @@ pub unsafe extern "C" fn forward_graph_iterate_time(
 /// `status` must be a valid pointer to an `i32`.
 #[no_mangle]
 pub unsafe extern "C" fn forward_graph_ancestry_proportions(
-    status: *mut i32,
     offspring_deme: usize,
+    status: *mut i32,
     graph: *mut OpaqueForwardGraph,
 ) -> *const f64 {
     *status = 0;
@@ -561,8 +561,9 @@ demes:
                         unsafe { forward_graph_offspring_deme_sizes(graph.as_ptr(), pstatus) };
                     assert_eq!(status, 0);
                     assert!(!offspring_deme_sizes.is_null());
-                    ancestry_proportions =
-                        unsafe { forward_graph_ancestry_proportions(pstatus, 0, graph.as_mut_ptr()) };
+                    ancestry_proportions = unsafe {
+                        forward_graph_ancestry_proportions(0, pstatus, graph.as_mut_ptr())
+                    };
                     assert_eq!(status, 0);
                     let ancestry_proportions =
                         unsafe { std::slice::from_raw_parts(ancestry_proportions, 1) };
