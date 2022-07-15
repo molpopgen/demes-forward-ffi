@@ -373,6 +373,10 @@ pub unsafe extern "C" fn forward_graph_ancestry_proportions(
     graph: *mut OpaqueForwardGraph,
 ) -> *const f64 {
     *status = 0;
+    if (*graph).error.is_some() {
+        *status = -1;
+        return std::ptr::null();
+    }
     match &(*graph).graph {
         Some(fgraph) => {
             if offspring_deme >= fgraph.num_demes_in_model() {
