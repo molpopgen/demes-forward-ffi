@@ -1,3 +1,4 @@
+use demes_forward::demes;
 use libc::c_char;
 use std::ffi::CStr;
 use std::ffi::CString;
