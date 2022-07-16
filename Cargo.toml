@@ -19,5 +19,4 @@ strip = true
 
 [dependencies]
 demes-forward = {version = "~0.1.0", git="https://github.com/molpopgen/demes-forward-rs"}
-demes = { version =  ">0.2.1,<0.3.0", git = "https://github.com/molpopgen/demes-rs" }
 libc = "~0.2"
