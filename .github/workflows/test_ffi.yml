@@ -41,4 +41,4 @@ jobs:
             cmake --build build
       - name: Run C example
         run: |
-          ./build/example
+           ./build/example example_yaml/*.yaml

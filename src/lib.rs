@@ -2,6 +2,7 @@ use demes_forward::demes;
 use libc::c_char;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::io::Read;
 
 pub struct OpaqueForwardGraph {
     graph: Option<demes_forward::ForwardGraph>,
@@ -84,6 +85,46 @@ pub unsafe extern "C" fn forward_graph_initialize_from_yaml(
         Err(e) => (*graph).update(None, Some(format!("{}", e))),
     };
     0
+}
+
+/// # Safety
+///
+/// * `file_name` must be a non-NULL pointer to valid utf8.
+/// * `graph` must be a valid pointer to an [`OpaqueForwardGraph`].
+#[no_mangle]
+pub unsafe extern "C" fn forward_graph_initialize_from_yaml_file(
+    file_name: *const c_char,
+    burnin: f64,
+    graph: *mut OpaqueForwardGraph,
+) -> i32 {
+    let filename_cstr = CStr::from_ptr(file_name);
+    let filename = match filename_cstr.to_str() {
+        Ok(string) => string,
+        Err(e) => {
+            (*graph).update(None, Some(format!("{}", e)));
+            return -1;
+        }
+    };
+    match std::fs::File::open(filename) {
+        Ok(mut file) => {
+            let mut buf = String::default();
+            match file.read_to_string(&mut buf) {
+                Ok(_) => {
+                    let cstring = CString::new(buf).unwrap();
+                    let ptr = cstring.as_ptr();
+                    forward_graph_initialize_from_yaml(ptr, burnin, graph)
+                }
+                Err(e) => {
+                    (*graph).update(None, Some(format!("{}", e)));
+                    -1
+                }
+            }
+        }
+        Err(e) => {
+            (*graph).update(None, Some(format!("{}", e)));
+            -1
+        }
+    }
 }
 
 /// # Safety
@@ -435,7 +476,7 @@ pub unsafe extern "C" fn forward_graph_model_end_time(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
+    use std::{ffi::CString, io::Write};
 
     struct GraphHolder {
         graph: *mut OpaqueForwardGraph,
@@ -677,5 +718,41 @@ demes:
             assert_eq!(times.last().unwrap(), &150.0);
             assert_eq!(ngens, 100);
         }
+    }
+
+    #[test]
+    fn test_from_yaml_file() {
+        let yaml = "
+time_units: generations
+demes:
+ - name: A
+   epochs:
+   - start_size: 100
+     end_time: 50
+   - start_size: 200
+";
+        {
+            let mut file = std::fs::File::create("simple_model.yaml").unwrap();
+            file.write_all(yaml.as_bytes()).unwrap();
+        }
+
+        let mut graph = GraphHolder::new();
+
+        let filename = "simple_model.yaml";
+        let filename_cstring = CString::new(filename).unwrap();
+        let filename: *const c_char = filename_cstring.as_ptr() as *const c_char;
+        assert_eq!(
+            unsafe { forward_graph_initialize_from_yaml_file(filename, 100.0, graph.as_mut_ptr()) },
+            0
+        );
+        let mut status = -1;
+        let pstatus: *mut i32 = &mut status;
+
+        assert_eq!(
+            unsafe { forward_graph_model_end_time(pstatus, graph.as_mut_ptr()) },
+            151.0
+        );
+
+        std::fs::remove_file("simple_model.yaml").unwrap();
     }
 }
